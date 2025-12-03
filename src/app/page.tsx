@@ -1,508 +1,96 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Play, Pause, RotateCcw, Moon, Sun, TrendingUp, BookOpen, Bell, Settings, Volume2, VolumeX } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { safeAuth, isSupabaseReady } from "@/lib/supabase";
+import { Play, Check, Moon, TrendingUp, BookOpen, Bell, Volume2, Star, Users, Award, Sparkles, ArrowRight, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
-// Tipos
-interface MeditationSession {
-  id: string;
-  date: string;
-  duration: number;
-  theme: string;
-}
+export default function LandingPage() {
+  const router = useRouter();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-interface SleepRecord {
-  date: string;
-  hours: number;
-  quality: number;
-}
-
-interface UserPreferences {
-  notificationsEnabled: boolean;
-  notificationTime: string;
-  darkMode: boolean;
-}
-
-// Aulas de meditação (agora com 10 aulas!)
-const meditationClasses = [
-  {
-    id: "1",
-    title: "Respiração Consciente",
-    theme: "Ansiedade",
-    description: "Acalme sua mente focando na respiração profunda e consciente.",
-    duration: 5,
-    content: `Encontre uma posição confortável. Feche os olhos suavemente.
-
-Inspire profundamente pelo nariz, contando até 4.
-Segure o ar por 4 segundos.
-Expire lentamente pela boca, contando até 6.
-
-Repita este ciclo, permitindo que cada respiração leve embora as tensões do dia.
-
-Observe como seu corpo relaxa a cada expiração.
-Não force nada, apenas observe o fluxo natural da sua respiração.
-
-Quando pensamentos surgirem, gentilmente retorne sua atenção à respiração.`,
-    color: "from-blue-400 to-cyan-500"
-  },
-  {
-    id: "2",
-    title: "Sono Profundo",
-    theme: "Sono",
-    description: "Prepare seu corpo e mente para uma noite de sono reparador.",
-    duration: 10,
-    content: `Deite-se confortavelmente em sua cama. Ajuste travesseiros e cobertores.
-
-Comece relaxando os dedos dos pés, depois os pés, as pernas...
-Sinta cada parte do corpo ficando pesada e relaxada.
-
-Imagine uma onda de relaxamento subindo pelo seu corpo.
-Dos pés até a cabeça, liberando toda tensão.
-
-Sua respiração fica cada vez mais lenta e profunda.
-Você está seguro, confortável e pronto para descansar.
-
-Deixe sua mente flutuar suavemente em direção ao sono.`,
-    color: "from-indigo-400 to-purple-500"
-  },
-  {
-    id: "3",
-    title: "Gratidão Matinal",
-    theme: "Energia",
-    description: "Comece o dia com energia positiva e gratidão.",
-    duration: 7,
-    content: `Sente-se confortavelmente. Respire fundo três vezes.
-
-Pense em três coisas pelas quais você é grato hoje.
-Pode ser algo simples: o sol, um sorriso, uma refeição.
-
-Sinta a gratidão preenchendo seu coração.
-Deixe essa sensação se expandir por todo seu corpo.
-
-Visualize seu dia fluindo com leveza e positividade.
-Você está pronto para aproveitar cada momento.
-
-Abra os olhos quando estiver pronto, levando essa energia consigo.`,
-    color: "from-amber-400 to-orange-500"
-  },
-  {
-    id: "4",
-    title: "Mindfulness no Presente",
-    theme: "Foco",
-    description: "Traga sua atenção para o momento presente com plena consciência.",
-    duration: 15,
-    content: `Sente-se em uma posição confortável. Coluna ereta, ombros relaxados.
-
-Traga sua atenção para o momento presente.
-Observe os sons ao seu redor, sem julgá-los.
-
-Sinta o contato do seu corpo com a superfície onde está sentado.
-Observe a temperatura do ar em sua pele.
-
-Quando sua mente vagar para o passado ou futuro,
-gentilmente a traga de volta para o agora.
-
-Este momento é tudo que existe.
-Aqui e agora, você está completo.`,
-    color: "from-green-400 to-emerald-500"
-  },
-  {
-    id: "5",
-    title: "Liberação de Estresse",
-    theme: "Relaxamento",
-    description: "Libere tensões acumuladas e encontre paz interior.",
-    duration: 12,
-    content: `Feche os olhos e respire profundamente.
-
-Escaneie seu corpo mentalmente, da cabeça aos pés.
-Onde você sente tensão? Ombros? Mandíbula? Costas?
-
-A cada expiração, imagine liberando essa tensão.
-Visualize-a saindo do seu corpo como fumaça.
-
-Seu corpo está ficando mais leve, mais solto.
-Cada músculo relaxa profundamente.
-
-Permita-se soltar o controle.
-Você está seguro para relaxar completamente.
-
-Quando estiver pronto, retorne suavemente, renovado.`,
-    color: "from-teal-400 to-cyan-500"
-  },
-  {
-    id: "6",
-    title: "Caminhada Mental na Natureza",
-    theme: "Paz Interior",
-    description: "Visualize uma caminhada relaxante em um ambiente natural sereno.",
-    duration: 8,
-    content: `Feche os olhos e respire profundamente três vezes.
-
-Imagine-se em uma trilha tranquila cercada por árvores.
-O sol filtra suavemente através das folhas.
-
-Sinta a brisa fresca tocando seu rosto.
-Ouça o canto dos pássaros ao longe.
-
-Cada passo que você dá é leve e sem pressa.
-Você está completamente presente neste momento.
-
-Observe as cores vibrantes da natureza ao seu redor.
-Sinta a conexão profunda com tudo que existe.
-
-Quando estiver pronto, traga essa paz de volta com você.`,
-    color: "from-lime-400 to-green-500"
-  },
-  {
-    id: "7",
-    title: "Meditação da Compaixão",
-    theme: "Amor Próprio",
-    description: "Cultive compaixão por si mesmo e pelos outros.",
-    duration: 10,
-    content: `Sente-se confortavelmente e coloque uma mão sobre seu coração.
-
-Respire profundamente e sinta o calor da sua mão.
-Repita mentalmente: "Que eu seja feliz. Que eu seja saudável."
-
-Agora pense em alguém que você ama.
-Envie a essa pessoa os mesmos desejos de felicidade e saúde.
-
-Expanda essa compaixão para pessoas neutras, depois para todos os seres.
-Sinta seu coração se expandindo com amor universal.
-
-Você é digno de amor e compaixão.
-Todos os seres merecem paz e felicidade.
-
-Retorne suavemente, levando essa compaixão consigo.`,
-    color: "from-pink-400 to-rose-500"
-  },
-  {
-    id: "8",
-    title: "Meditação do Corpo Scan",
-    theme: "Consciência Corporal",
-    description: "Explore cada parte do seu corpo com atenção plena.",
-    duration: 20,
-    content: `Deite-se confortavelmente de costas, braços ao lado do corpo.
-
-Comece trazendo atenção aos dedos dos pés.
-Observe qualquer sensação - calor, frio, formigamento.
-
-Mova sua atenção lentamente para os pés, tornozelos, panturrilhas.
-Não julgue, apenas observe cada sensação.
-
-Continue subindo: joelhos, coxas, quadris, abdômen.
-Respire em cada área, liberando qualquer tensão.
-
-Peito, ombros, braços, mãos, dedos.
-Pescoço, mandíbula, rosto, topo da cabeça.
-
-Sinta seu corpo inteiro como uma unidade completa.
-Você está presente em cada célula do seu ser.
-
-Descanse nesta consciência plena por alguns momentos.`,
-    color: "from-violet-400 to-purple-500"
-  },
-  {
-    id: "9",
-    title: "Meditação para Criatividade",
-    theme: "Inspiração",
-    description: "Desbloqueie sua criatividade e conecte-se com sua imaginação.",
-    duration: 12,
-    content: `Sente-se confortavelmente e feche os olhos.
-
-Respire profundamente e imagine uma luz dourada acima da sua cabeça.
-Esta luz representa sua criatividade infinita.
-
-A cada inspiração, essa luz desce e preenche sua mente.
-Sinta ideias fluindo livremente, sem julgamento.
-
-Visualize um espaço interno onde tudo é possível.
-Não há limites, não há regras, apenas pura criação.
-
-Permita que imagens, palavras ou sensações surjam naturalmente.
-Observe-as com curiosidade e abertura.
-
-Quando estiver pronto, agradeça por essa conexão criativa.
-Saiba que você pode retornar a este espaço sempre que precisar.`,
-    color: "from-yellow-400 to-amber-500"
-  },
-  {
-    id: "10",
-    title: "Meditação do Equilíbrio",
-    theme: "Harmonia",
-    description: "Encontre equilíbrio entre corpo, mente e espírito.",
-    duration: 15,
-    content: `Sente-se em uma posição estável, coluna ereta mas relaxada.
-
-Imagine uma linha de energia subindo da base da sua coluna até o topo da cabeça.
-Esta linha representa seu eixo central de equilíbrio.
-
-Respire profundamente e sinta-se ancorado à terra.
-Ao mesmo tempo, sinta-se leve e conectado ao céu.
-
-Observe os opostos dentro de você: força e suavidade, ação e descanso.
-Não há necessidade de escolher - ambos coexistem em harmonia.
-
-Visualize uma balança perfeitamente equilibrada em seu coração.
-Tudo em sua vida encontra seu lugar natural.
-
-Confie no fluxo da vida.
-Você está exatamente onde precisa estar.
-
-Retorne suavemente, mantendo esse senso de equilíbrio.`,
-    color: "from-sky-400 to-blue-500"
-  }
-];
-
-export default function MeditationApp() {
-  // Estados
-  const [activeTab, setActiveTab] = useState("home");
-  const [selectedClass, setSelectedClass] = useState<typeof meditationClasses[0] | null>(null);
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [sessions, setSessions] = useState<MeditationSession[]>([]);
-  const [sleepRecords, setSleepRecords] = useState<SleepRecord[]>([]);
-  const [preferences, setPreferences] = useState<UserPreferences>({
-    notificationsEnabled: false,
-    notificationTime: "20:00",
-    darkMode: false
-  });
-  const [sleepHours, setSleepHours] = useState(7);
-  const [sleepQuality, setSleepQuality] = useState(3);
-
-  // Estados para áudio
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
-  const [isAudioSupported, setIsAudioSupported] = useState(false);
-  const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
-
-  // Verificar suporte a Web Speech API
+  // Verificar autenticação
   useEffect(() => {
-    if ('speechSynthesis' in window) {
-      setIsAudioSupported(true);
-    }
-  }, []);
-
-  // Carregar dados do localStorage
-  useEffect(() => {
-    const savedSessions = localStorage.getItem("meditationSessions");
-    const savedSleep = localStorage.getItem("sleepRecords");
-    const savedPreferences = localStorage.getItem("userPreferences");
-
-    if (savedSessions) setSessions(JSON.parse(savedSessions));
-    if (savedSleep) setSleepRecords(JSON.parse(savedSleep));
-    if (savedPreferences) setPreferences(JSON.parse(savedPreferences));
-  }, []);
-
-  // Salvar dados no localStorage
-  useEffect(() => {
-    localStorage.setItem("meditationSessions", JSON.stringify(sessions));
-  }, [sessions]);
-
-  useEffect(() => {
-    localStorage.setItem("sleepRecords", JSON.stringify(sleepRecords));
-  }, [sleepRecords]);
-
-  useEffect(() => {
-    localStorage.setItem("userPreferences", JSON.stringify(preferences));
-  }, [preferences]);
-
-  // Timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isTimerRunning) {
-      interval = setInterval(() => {
-        setTimerSeconds((prev) => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning]);
-
-  // Notificações diárias
-  useEffect(() => {
-    if (preferences.notificationsEnabled && "Notification" in window) {
-      if (Notification.permission === "default") {
-        Notification.requestPermission();
-      }
-
-      const checkNotification = () => {
-        const now = new Date();
-        const [hours, minutes] = preferences.notificationTime.split(":");
-        if (now.getHours() === parseInt(hours) && now.getMinutes() === parseInt(minutes)) {
-          if (Notification.permission === "granted") {
-            new Notification("Hora de Meditar! 🧘‍♀️", {
-              body: "Reserve alguns minutos para sua prática de meditação.",
-              icon: "/icon.svg"
-            });
-          }
-          toast.success("Hora de Meditar! 🧘‍♀️", {
-            description: "Reserve alguns minutos para sua prática de meditação."
-          });
+    const checkAuth = async () => {
+      try {
+        if (!isSupabaseReady()) {
+          setIsAuthenticated(false);
+          setLoading(false);
+          return;
         }
-      };
 
-      const interval = setInterval(checkNotification, 60000);
-      return () => clearInterval(interval);
-    }
-  }, [preferences]);
-
-  // Limpar áudio ao mudar de aula ou desmontar
-  useEffect(() => {
-    return () => {
-      if (speechSynthesisRef.current) {
-        window.speechSynthesis.cancel();
+        const { data: { session } } = await safeAuth.getSession();
+        setIsAuthenticated(!!session);
+      } catch (error) {
+        // Silenciosamente trata o erro
+        setIsAuthenticated(false);
+      } finally {
+        setLoading(false);
       }
     };
-  }, [selectedClass]);
 
-  // Funções de áudio
-  const playAudio = () => {
-    if (!selectedClass || !isAudioSupported) return;
+    checkAuth();
 
-    // Cancelar qualquer áudio anterior
-    window.speechSynthesis.cancel();
+    // Monitorar mudanças de autenticação
+    const { data: { subscription } } = safeAuth.onAuthStateChange(async (event, session) => {
+      setIsAuthenticated(!!session);
+    });
 
-    const utterance = new SpeechSynthesisUtterance(selectedClass.content);
-    utterance.lang = 'pt-BR';
-    utterance.rate = 1.0; // Velocidade normal (1x)
-    utterance.pitch = 1.0; // Tom normal
-    utterance.volume = 1.0; // Volume máximo
-
-    utterance.onstart = () => {
-      setIsAudioPlaying(true);
+    return () => {
+      if (subscription && typeof subscription.unsubscribe === 'function') {
+        subscription.unsubscribe();
+      }
     };
+  }, []);
 
-    utterance.onend = () => {
-      setIsAudioPlaying(false);
-    };
+  const handleGetStarted = () => {
+    if (!isSupabaseReady()) {
+      toast.error("Sistema de autenticação não configurado. Entre em contato com o suporte.");
+      return;
+    }
 
-    utterance.onerror = () => {
-      setIsAudioPlaying(false);
-      toast.error("Erro ao reproduzir áudio", {
-        description: "Tente novamente ou verifique as configurações do navegador."
-      });
-    };
+    if (!isAuthenticated) {
+      // Se não está autenticado, vai para login
+      router.push("/login");
+      return;
+    }
 
-    speechSynthesisRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
+    // Se está autenticado, vai para o dashboard
+    router.push("/dashboard");
   };
 
-  const pauseAudio = () => {
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-      setIsAudioPlaying(false);
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" });
+      setMobileMenuOpen(false);
     }
   };
 
-  const toggleAudio = () => {
-    if (isAudioPlaying) {
-      pauseAudio();
-    } else {
-      playAudio();
-    }
-  };
-
-  // Funções
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  const startMeditation = (meditationClass: typeof meditationClasses[0]) => {
-    setSelectedClass(meditationClass);
-    setTimerSeconds(0);
-    setIsTimerRunning(true);
-    setActiveTab("timer");
-    // Parar qualquer áudio anterior
-    if (isAudioPlaying) {
-      pauseAudio();
-    }
-  };
-
-  const toggleTimer = () => {
-    setIsTimerRunning(!isTimerRunning);
-  };
-
-  const resetTimer = () => {
-    setIsTimerRunning(false);
-    setTimerSeconds(0);
-    if (isAudioPlaying) {
-      pauseAudio();
-    }
-  };
-
-  const finishSession = () => {
-    if (timerSeconds > 0 && selectedClass) {
-      const newSession: MeditationSession = {
-        id: Date.now().toString(),
-        date: new Date().toISOString(),
-        duration: timerSeconds,
-        theme: selectedClass.theme
-      };
-      setSessions([newSession, ...sessions]);
-      toast.success("Sessão concluída! 🎉", {
-        description: `Você meditou por ${formatTime(timerSeconds)}`
-      });
-      resetTimer();
-      setSelectedClass(null);
-      setActiveTab("progress");
-    }
-  };
-
-  const addSleepRecord = () => {
-    const newRecord: SleepRecord = {
-      date: new Date().toISOString().split("T")[0],
-      hours: sleepHours,
-      quality: sleepQuality
-    };
-    setSleepRecords([newRecord, ...sleepRecords.filter(r => r.date !== newRecord.date)]);
-    toast.success("Registro de sono salvo! 😴");
-  };
-
-  // Dados para gráficos
-  const last7DaysMeditation = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - i));
-    const dateStr = date.toISOString().split("T")[0];
-    const daySessions = sessions.filter(s => s.date.startsWith(dateStr));
-    const totalMinutes = daySessions.reduce((acc, s) => acc + s.duration, 0) / 60;
-    return {
-      date: date.toLocaleDateString("pt-BR", { weekday: "short" }),
-      minutes: Math.round(totalMinutes)
-    };
-  });
-
-  const last7DaysSleep = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - i));
-    const dateStr = date.toISOString().split("T")[0];
-    const record = sleepRecords.find(r => r.date === dateStr);
-    return {
-      date: date.toLocaleDateString("pt-BR", { weekday: "short" }),
-      hours: record?.hours || 0,
-      quality: record?.quality || 0
-    };
-  });
-
-  const totalMeditationTime = sessions.reduce((acc, s) => acc + s.duration, 0);
-  const totalSessions = sessions.length;
-  const averageSleep = sleepRecords.length > 0
-    ? sleepRecords.reduce((acc, r) => acc + r.hours, 0) / sleepRecords.length
-    : 0;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-cyan-50 to-green-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-green-400 flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <Moon className="w-8 h-8 text-white" />
+          </div>
+          <p className="text-gray-600">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-cyan-50 to-green-50">
       <Toaster />
       
-      {/* Header */}
+      {/* Header/Navigation */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-blue-100 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -510,476 +98,561 @@ export default function MeditationApp() {
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-green-400 flex items-center justify-center">
                 <Moon className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-800">Serenidade</h1>
-                <p className="text-xs text-gray-500">Seu guia de meditação</p>
-              </div>
+              <h1 className="text-xl font-bold text-gray-800">Serenidade</h1>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setActiveTab("settings")}
-              className="text-gray-600 hover:text-gray-800"
+
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center gap-6">
+              <button onClick={() => scrollToSection("features")} className="text-gray-600 hover:text-gray-800 transition-colors">
+                Recursos
+              </button>
+              <button onClick={() => scrollToSection("benefits")} className="text-gray-600 hover:text-gray-800 transition-colors">
+                Benefícios
+              </button>
+              <button onClick={() => scrollToSection("testimonials")} className="text-gray-600 hover:text-gray-800 transition-colors">
+                Depoimentos
+              </button>
+              <button onClick={() => scrollToSection("pricing")} className="text-gray-600 hover:text-gray-800 transition-colors">
+                Planos
+              </button>
+              <Button
+                onClick={handleGetStarted}
+                className="bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white"
+              >
+                {isAuthenticated ? "Ir para o App" : "Começar Agora"}
+              </Button>
+            </nav>
+
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden text-gray-600 hover:text-gray-800"
             >
-              <Settings className="w-5 h-5" />
-            </Button>
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
           </div>
+
+          {/* Mobile Navigation */}
+          {mobileMenuOpen && (
+            <nav className="md:hidden mt-4 pb-4 flex flex-col gap-3">
+              <button onClick={() => scrollToSection("features")} className="text-left text-gray-600 hover:text-gray-800 py-2">
+                Recursos
+              </button>
+              <button onClick={() => scrollToSection("benefits")} className="text-left text-gray-600 hover:text-gray-800 py-2">
+                Benefícios
+              </button>
+              <button onClick={() => scrollToSection("testimonials")} className="text-left text-gray-600 hover:text-gray-800 py-2">
+                Depoimentos
+              </button>
+              <button onClick={() => scrollToSection("pricing")} className="text-left text-gray-600 hover:text-gray-800 py-2">
+                Planos
+              </button>
+              <Button
+                onClick={handleGetStarted}
+                className="bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white w-full"
+              >
+                {isAuthenticated ? "Ir para o App" : "Começar Agora"}
+              </Button>
+            </nav>
+          )}
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 pb-24">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6 bg-white/80 backdrop-blur-sm">
-            <TabsTrigger value="home" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-400 data-[state=active]:to-cyan-500 data-[state=active]:text-white">
-              <BookOpen className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Aulas</span>
-            </TabsTrigger>
-            <TabsTrigger value="timer" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-400 data-[state=active]:to-cyan-500 data-[state=active]:text-white">
-              <Play className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Timer</span>
-            </TabsTrigger>
-            <TabsTrigger value="progress" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-400 data-[state=active]:to-cyan-500 data-[state=active]:text-white">
-              <TrendingUp className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Progresso</span>
-            </TabsTrigger>
-            <TabsTrigger value="sleep" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-400 data-[state=active]:to-cyan-500 data-[state=active]:text-white">
-              <Moon className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Sono</span>
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Aulas de Meditação */}
-          <TabsContent value="home" className="space-y-4">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Escolha sua Prática</h2>
-              <p className="text-gray-600">Selecione uma aula de meditação guiada</p>
+      {/* Hero Section */}
+      <section className="container mx-auto px-4 py-16 md:py-24">
+        <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-full text-sm font-medium">
+              <Sparkles className="w-4 h-4" />
+              Transforme sua vida com meditação
             </div>
-
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {meditationClasses.map((meditationClass) => (
-                <Card key={meditationClass.id} className="overflow-hidden hover:shadow-lg transition-shadow border-blue-100">
-                  <div className={`h-2 bg-gradient-to-r ${meditationClass.color}`} />
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg text-gray-800">{meditationClass.title}</CardTitle>
-                        <CardDescription className="text-sm">{meditationClass.theme}</CardDescription>
-                      </div>
-                      <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                        {meditationClass.duration} min
-                      </span>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-gray-600 mb-4">{meditationClass.description}</p>
-                    <Button
-                      onClick={() => startMeditation(meditationClass)}
-                      className="w-full bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white"
-                    >
-                      <Play className="w-4 h-4 mr-2" />
-                      Iniciar Prática
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-800 leading-tight">
+              Encontre paz interior em apenas
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-green-400"> 5 minutos</span>
+            </h1>
+            <p className="text-lg text-gray-600 leading-relaxed">
+              Descubra o poder da meditação guiada com áudio profissional, acompanhamento de progresso e técnicas comprovadas para reduzir ansiedade e melhorar seu sono.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button
+                onClick={handleGetStarted}
+                size="lg"
+                className="bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white text-lg px-8 py-6"
+              >
+                <Play className="w-5 h-5 mr-2" />
+                Começar Agora
+              </Button>
+              <Button
+                onClick={() => scrollToSection("features")}
+                size="lg"
+                variant="outline"
+                className="border-blue-200 text-gray-700 hover:bg-blue-50 text-lg px-8 py-6"
+              >
+                Conhecer Recursos
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
             </div>
-          </TabsContent>
-
-          {/* Timer de Meditação */}
-          <TabsContent value="timer" className="space-y-6">
-            <Card className="border-blue-100">
-              <CardHeader className="text-center">
-                <CardTitle className="text-2xl text-gray-800">
-                  {selectedClass ? selectedClass.title : "Meditação Livre"}
-                </CardTitle>
-                {selectedClass && (
-                  <CardDescription>{selectedClass.theme}</CardDescription>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Timer Display */}
-                <div className="text-center">
-                  <div className="text-7xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-green-400 mb-4">
-                    {formatTime(timerSeconds)}
-                  </div>
-                  {selectedClass && (
-                    <Progress 
-                      value={(timerSeconds / (selectedClass.duration * 60)) * 100} 
-                      className="h-2 mb-4"
-                    />
-                  )}
-                </div>
-
-                {/* Controles de Áudio */}
-                {selectedClass && isAudioSupported && (
-                  <div className="flex justify-center mb-4">
-                    <Button
-                      onClick={toggleAudio}
-                      variant="outline"
-                      size="lg"
-                      className={`border-blue-200 ${isAudioPlaying ? 'bg-blue-50' : ''}`}
-                    >
-                      {isAudioPlaying ? (
-                        <>
-                          <VolumeX className="w-5 h-5 mr-2" />
-                          Parar Áudio
-                        </>
-                      ) : (
-                        <>
-                          <Volume2 className="w-5 h-5 mr-2" />
-                          Ouvir Guia
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                )}
-
-                {/* Conteúdo da Aula */}
-                {selectedClass && (
-                  <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
-                    <CardContent className="pt-6">
-                      <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
-                        {selectedClass.content}
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Controles do Timer */}
-                <div className="flex gap-3 justify-center">
-                  <Button
-                    onClick={toggleTimer}
-                    size="lg"
-                    className="bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white"
-                  >
-                    {isTimerRunning ? (
-                      <>
-                        <Pause className="w-5 h-5 mr-2" />
-                        Pausar
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-5 h-5 mr-2" />
-                        Iniciar
-                      </>
-                    )}
-                  </Button>
-                  <Button onClick={resetTimer} variant="outline" size="lg" className="border-blue-200">
-                    <RotateCcw className="w-5 h-5 mr-2" />
-                    Reiniciar
-                  </Button>
-                  {timerSeconds > 0 && (
-                    <Button
-                      onClick={finishSession}
-                      size="lg"
-                      className="bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-500 hover:to-emerald-600 text-white"
-                    >
-                      Concluir
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Progresso */}
-          <TabsContent value="progress" className="space-y-6">
-            {/* Estatísticas */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card className="border-blue-100">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-gray-600">Total de Sessões</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-500">
-                    {totalSessions}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">sessões completas</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-blue-100">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-gray-600">Tempo Total</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-500">
-                    {Math.round(totalMeditationTime / 60)}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">minutos meditados</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-blue-100">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-gray-600">Média de Sono</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">
-                    {averageSleep.toFixed(1)}h
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">por noite</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Gráfico de Meditação */}
-            <Card className="border-blue-100">
-              <CardHeader>
-                <CardTitle className="text-gray-800">Meditação - Últimos 7 Dias</CardTitle>
-                <CardDescription>Minutos meditados por dia</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={last7DaysMeditation}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e0f2fe" />
-                    <XAxis dataKey="date" stroke="#64748b" />
-                    <YAxis stroke="#64748b" />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: "white", 
-                        border: "1px solid #bae6fd",
-                        borderRadius: "8px"
-                      }}
-                    />
-                    <Bar dataKey="minutes" fill="url(#colorMeditation)" radius={[8, 8, 0, 0]} />
-                    <defs>
-                      <linearGradient id="colorMeditation" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#60a5fa" />
-                        <stop offset="100%" stopColor="#22d3ee" />
-                      </linearGradient>
-                    </defs>
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Histórico de Sessões */}
-            <Card className="border-blue-100">
-              <CardHeader>
-                <CardTitle className="text-gray-800">Histórico Recente</CardTitle>
-                <CardDescription>Suas últimas sessões de meditação</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {sessions.slice(0, 5).map((session) => (
-                    <div key={session.id} className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border border-blue-100">
-                      <div>
-                        <p className="font-medium text-gray-800">{session.theme}</p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(session.date).toLocaleDateString("pt-BR")}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-blue-600">{formatTime(session.duration)}</p>
-                        <p className="text-xs text-gray-500">duração</p>
-                      </div>
-                    </div>
+            <div className="flex items-center gap-6 pt-4">
+              <div className="flex items-center gap-2">
+                <div className="flex -space-x-2">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-cyan-500 border-2 border-white" />
                   ))}
-                  {sessions.length === 0 && (
-                    <p className="text-center text-gray-500 py-8">
-                      Nenhuma sessão registrada ainda. Comece sua jornada! 🧘‍♀️
-                    </p>
-                  )}
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                <span className="text-sm text-gray-600">+10k usuários</span>
+              </div>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                ))}
+                <span className="text-sm text-gray-600 ml-1">4.9/5</span>
+              </div>
+            </div>
+          </div>
 
-          {/* Sono */}
-          <TabsContent value="sleep" className="space-y-6">
-            {/* Registrar Sono */}
-            <Card className="border-blue-100">
-              <CardHeader>
-                <CardTitle className="text-gray-800">Registrar Sono de Hoje</CardTitle>
-                <CardDescription>Acompanhe a qualidade do seu sono</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-3">
-                  <Label className="text-gray-700">Horas dormidas: {sleepHours}h</Label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="12"
-                    step="0.5"
-                    value={sleepHours}
-                    onChange={(e) => setSleepHours(parseFloat(e.target.value))}
-                    className="w-full h-2 bg-gradient-to-r from-blue-200 to-cyan-200 rounded-lg appearance-none cursor-pointer"
-                  />
+          <div className="relative">
+            <div className="relative z-10 bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-blue-100">
+              <div className="space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-cyan-500 flex items-center justify-center">
+                    <Moon className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-800">Respiração Consciente</h3>
+                    <p className="text-sm text-gray-500">5 minutos • Ansiedade</p>
+                  </div>
                 </div>
+                <div className="h-2 bg-gradient-to-r from-blue-200 to-cyan-200 rounded-full overflow-hidden">
+                  <div className="h-full w-3/4 bg-gradient-to-r from-blue-400 to-cyan-500 rounded-full animate-pulse" />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center p-3 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg">
+                    <p className="text-2xl font-bold text-blue-600">127</p>
+                    <p className="text-xs text-gray-600">Sessões</p>
+                  </div>
+                  <div className="text-center p-3 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
+                    <p className="text-2xl font-bold text-green-600">42h</p>
+                    <p className="text-xs text-gray-600">Meditadas</p>
+                  </div>
+                  <div className="text-center p-3 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg">
+                    <p className="text-2xl font-bold text-indigo-600">7.5h</p>
+                    <p className="text-xs text-gray-600">Sono médio</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="absolute -top-4 -right-4 w-72 h-72 bg-gradient-to-br from-blue-200 to-cyan-200 rounded-full blur-3xl opacity-30" />
+            <div className="absolute -bottom-4 -left-4 w-72 h-72 bg-gradient-to-br from-green-200 to-emerald-200 rounded-full blur-3xl opacity-30" />
+          </div>
+        </div>
+      </section>
 
-                <div className="space-y-3">
-                  <Label className="text-gray-700">Qualidade do sono: {sleepQuality}/5</Label>
-                  <div className="flex gap-2">
-                    {[1, 2, 3, 4, 5].map((value) => (
-                      <button
-                        key={value}
-                        onClick={() => setSleepQuality(value)}
-                        className={`flex-1 py-3 rounded-lg font-medium transition-all ${
-                          sleepQuality >= value
-                            ? "bg-gradient-to-r from-blue-400 to-cyan-500 text-white"
-                            : "bg-gray-100 text-gray-400"
-                        }`}
-                      >
-                        {value}
-                      </button>
+      {/* Features Section */}
+      <section id="features" className="container mx-auto px-4 py-16 md:py-24">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
+            Recursos que transformam sua prática
+          </h2>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Tudo que você precisa para desenvolver uma rotina de meditação consistente e eficaz
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="border-blue-100 hover:shadow-xl transition-shadow">
+            <CardHeader>
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-500 flex items-center justify-center mb-4">
+                <Volume2 className="w-6 h-6 text-white" />
+              </div>
+              <CardTitle className="text-gray-800">Áudio Guiado Profissional</CardTitle>
+              <CardDescription>
+                Meditações narradas com voz suave e instruções claras para guiar sua prática
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="border-blue-100 hover:shadow-xl transition-shadow">
+            <CardHeader>
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center mb-4">
+                <BookOpen className="w-6 h-6 text-white" />
+              </div>
+              <CardTitle className="text-gray-800">10 Aulas Especializadas</CardTitle>
+              <CardDescription>
+                Técnicas para ansiedade, sono, foco, energia e muito mais
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="border-blue-100 hover:shadow-xl transition-shadow">
+            <CardHeader>
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center mb-4">
+                <TrendingUp className="w-6 h-6 text-white" />
+              </div>
+              <CardTitle className="text-gray-800">Acompanhamento Completo</CardTitle>
+              <CardDescription>
+                Gráficos e estatísticas detalhadas do seu progresso e evolução
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="border-blue-100 hover:shadow-xl transition-shadow">
+            <CardHeader>
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mb-4">
+                <Moon className="w-6 h-6 text-white" />
+              </div>
+              <CardTitle className="text-gray-800">Monitoramento de Sono</CardTitle>
+              <CardDescription>
+                Registre e acompanhe a qualidade do seu sono diariamente
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="border-blue-100 hover:shadow-xl transition-shadow">
+            <CardHeader>
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center mb-4">
+                <Bell className="w-6 h-6 text-white" />
+              </div>
+              <CardTitle className="text-gray-800">Lembretes Inteligentes</CardTitle>
+              <CardDescription>
+                Notificações personalizadas para manter sua rotina consistente
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="border-blue-100 hover:shadow-xl transition-shadow">
+            <CardHeader>
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center mb-4">
+                <Play className="w-6 h-6 text-white" />
+              </div>
+              <CardTitle className="text-gray-800">Timer Personalizável</CardTitle>
+              <CardDescription>
+                Controle total sobre a duração das suas sessões de meditação
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </section>
+
+      {/* Benefits Section */}
+      <section id="benefits" className="bg-white/50 backdrop-blur-sm py-16 md:py-24">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
+              Benefícios comprovados pela ciência
+            </h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Milhares de estudos confirmam os efeitos positivos da meditação regular
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-cyan-500 flex items-center justify-center">
+                  <Check className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-800 mb-2">Reduz Ansiedade e Estresse</h3>
+                <p className="text-gray-600">
+                  Diminui os níveis de cortisol e promove sensação de calma e bem-estar
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
+                  <Check className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-800 mb-2">Melhora a Qualidade do Sono</h3>
+                <p className="text-gray-600">
+                  Ajuda a adormecer mais rápido e ter um sono mais profundo e reparador
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center">
+                  <Check className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-800 mb-2">Aumenta Foco e Concentração</h3>
+                <p className="text-gray-600">
+                  Melhora a capacidade de atenção e produtividade no dia a dia
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                  <Check className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-800 mb-2">Fortalece o Sistema Imunológico</h3>
+                <p className="text-gray-600">
+                  Reduz inflamações e fortalece as defesas naturais do corpo
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center">
+                  <Check className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-800 mb-2">Desenvolve Inteligência Emocional</h3>
+                <p className="text-gray-600">
+                  Aumenta autoconsciência e capacidade de lidar com emoções
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center">
+                  <Check className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-800 mb-2">Promove Bem-Estar Geral</h3>
+                <p className="text-gray-600">
+                  Aumenta sensação de felicidade e satisfação com a vida
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials Section */}
+      <section id="testimonials" className="container mx-auto px-4 py-16 md:py-24">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
+            O que nossos usuários dizem
+          </h2>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Histórias reais de transformação através da meditação
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          <Card className="border-blue-100">
+            <CardHeader>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-cyan-500" />
+                <div>
+                  <p className="font-bold text-gray-800">Maria Silva</p>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
                     ))}
                   </div>
                 </div>
+              </div>
+              <CardDescription className="text-gray-600">
+                "Sofria com ansiedade há anos. Depois de 2 semanas usando o app, já sinto uma diferença enorme. As aulas guiadas são perfeitas!"
+              </CardDescription>
+            </CardHeader>
+          </Card>
 
+          <Card className="border-blue-100">
+            <CardHeader>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500" />
+                <div>
+                  <p className="font-bold text-gray-800">João Santos</p>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <CardDescription className="text-gray-600">
+                "Meu sono melhorou muito! Uso a meditação de sono profundo toda noite e acordo muito mais descansado. Recomendo demais!"
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="border-blue-100">
+            <CardHeader>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500" />
+                <div>
+                  <p className="font-bold text-gray-800">Ana Costa</p>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <CardDescription className="text-gray-600">
+                "Aplicativo incrível! A variedade de aulas e o acompanhamento de progresso me motivam a meditar todos os dias. Mudou minha vida!"
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section id="pricing" className="bg-white/50 backdrop-blur-sm py-16 md:py-24">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
+              Escolha seu plano
+            </h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Planos premium com acesso completo a todos os recursos
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            {/* Plano Premium */}
+            <Card className="border-blue-400 shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 bg-gradient-to-r from-blue-400 to-cyan-500 text-white px-4 py-1 text-sm font-medium">
+                Mais Popular
+              </div>
+              <CardHeader>
+                <CardTitle className="text-2xl text-gray-800">Premium</CardTitle>
+                <CardDescription>Acesso completo</CardDescription>
+                <div className="mt-4">
+                  <span className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-500">R$ 29,90</span>
+                  <span className="text-gray-600">/mês</span>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <ul className="space-y-3">
+                  <li className="flex items-center gap-2">
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="text-gray-600">10 aulas especializadas</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="text-gray-600">Áudio guiado profissional</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="text-gray-600">Monitoramento de sono</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="text-gray-600">Lembretes personalizados</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="text-gray-600">Estatísticas avançadas</span>
+                  </li>
+                </ul>
                 <Button
-                  onClick={addSleepRecord}
-                  className="w-full bg-gradient-to-r from-indigo-400 to-purple-500 hover:from-indigo-500 hover:to-purple-600 text-white"
+                  onClick={handleGetStarted}
+                  className="w-full bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white"
                 >
-                  <Moon className="w-4 h-4 mr-2" />
-                  Salvar Registro
+                  Começar Agora
                 </Button>
               </CardContent>
             </Card>
 
-            {/* Gráfico de Sono */}
+            {/* Plano Anual */}
             <Card className="border-blue-100">
               <CardHeader>
-                <CardTitle className="text-gray-800">Sono - Últimos 7 Dias</CardTitle>
-                <CardDescription>Horas dormidas por noite</CardDescription>
+                <CardTitle className="text-2xl text-gray-800">Anual</CardTitle>
+                <CardDescription>Economize 40%</CardDescription>
+                <div className="mt-4">
+                  <span className="text-4xl font-bold text-gray-800">R$ 179,90</span>
+                  <span className="text-gray-600">/ano</span>
+                </div>
+                <p className="text-sm text-green-600 font-medium">R$ 14,99/mês</p>
               </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <LineChart data={last7DaysSleep}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e0f2fe" />
-                    <XAxis dataKey="date" stroke="#64748b" />
-                    <YAxis stroke="#64748b" />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: "white", 
-                        border: "1px solid #c7d2fe",
-                        borderRadius: "8px"
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="hours" 
-                      stroke="#818cf8" 
-                      strokeWidth={3}
-                      dot={{ fill: "#818cf8", r: 5 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+              <CardContent className="space-y-4">
+                <ul className="space-y-3">
+                  <li className="flex items-center gap-2">
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="text-gray-600">Tudo do Premium</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="text-gray-600">Acesso antecipado a novos recursos</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="text-gray-600">Suporte prioritário</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="text-gray-600">Economia de R$ 179/ano</span>
+                  </li>
+                </ul>
+                <Button
+                  onClick={handleGetStarted}
+                  variant="outline"
+                  className="w-full border-blue-200 hover:bg-blue-50"
+                >
+                  Começar Agora
+                </Button>
               </CardContent>
             </Card>
+          </div>
+        </div>
+      </section>
 
-            {/* Histórico de Sono */}
-            <Card className="border-blue-100">
-              <CardHeader>
-                <CardTitle className="text-gray-800">Histórico de Sono</CardTitle>
-                <CardDescription>Seus registros recentes</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {sleepRecords.slice(0, 7).map((record, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-100">
-                      <div>
-                        <p className="font-medium text-gray-800">
-                          {new Date(record.date).toLocaleDateString("pt-BR", { 
-                            weekday: "long", 
-                            day: "numeric", 
-                            month: "long" 
-                          })}
-                        </p>
-                        <p className="text-xs text-gray-500">Qualidade: {record.quality}/5</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-indigo-600">{record.hours}h</p>
-                        <p className="text-xs text-gray-500">dormidas</p>
-                      </div>
-                    </div>
-                  ))}
-                  {sleepRecords.length === 0 && (
-                    <p className="text-center text-gray-500 py-8">
-                      Nenhum registro de sono ainda. Comece a acompanhar! 😴
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+      {/* CTA Section */}
+      <section className="container mx-auto px-4 py-16 md:py-24">
+        <Card className="bg-gradient-to-r from-blue-400 to-cyan-500 border-0 text-white overflow-hidden relative">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
+          <CardContent className="py-16 px-8 text-center relative z-10">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Comece sua jornada de transformação hoje
+            </h2>
+            <p className="text-lg mb-8 text-blue-50 max-w-2xl mx-auto">
+              Junte-se a milhares de pessoas que já descobriram o poder da meditação para viver com mais paz, foco e bem-estar
+            </p>
+            <Button
+              onClick={handleGetStarted}
+              size="lg"
+              className="bg-white text-blue-600 hover:bg-blue-50 text-lg px-8 py-6"
+            >
+              <Play className="w-5 h-5 mr-2" />
+              Começar Agora
+            </Button>
+            <p className="text-sm text-blue-50 mt-4">
+              Cancele quando quiser
+            </p>
+          </CardContent>
+        </Card>
+      </section>
 
-          {/* Configurações */}
-          <TabsContent value="settings" className="space-y-6">
-            <Card className="border-blue-100">
-              <CardHeader>
-                <CardTitle className="text-gray-800">Notificações</CardTitle>
-                <CardDescription>Configure lembretes para suas práticas</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-gray-700">Notificações Diárias</Label>
-                    <p className="text-sm text-gray-500">Receba lembretes para meditar</p>
-                  </div>
-                  <Switch
-                    checked={preferences.notificationsEnabled}
-                    onCheckedChange={(checked) =>
-                      setPreferences({ ...preferences, notificationsEnabled: checked })
-                    }
-                  />
-                </div>
-
-                {preferences.notificationsEnabled && (
-                  <div className="space-y-2">
-                    <Label className="text-gray-700">Horário do Lembrete</Label>
-                    <input
-                      type="time"
-                      value={preferences.notificationTime}
-                      onChange={(e) =>
-                        setPreferences({ ...preferences, notificationTime: e.target.value })
-                      }
-                      className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-blue-100">
-              <CardHeader>
-                <CardTitle className="text-gray-800">Sobre o App</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center gap-3 text-gray-600">
-                  <Volume2 className="w-5 h-5 text-blue-400" />
-                  <div>
-                    <p className="font-medium">Áudio Guiado</p>
-                    <p className="text-sm text-gray-500">Narração em velocidade normal (1x)</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 text-gray-600">
-                  <Bell className="w-5 h-5 text-blue-400" />
-                  <div>
-                    <p className="font-medium">Lembretes Inteligentes</p>
-                    <p className="text-sm text-gray-500">Notificações personalizadas</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 text-gray-600">
-                  <TrendingUp className="w-5 h-5 text-green-400" />
-                  <div>
-                    <p className="font-medium">Acompanhamento Completo</p>
-                    <p className="text-sm text-gray-500">Gráficos e estatísticas</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 text-gray-600">
-                  <Moon className="w-5 h-5 text-indigo-400" />
-                  <div>
-                    <p className="font-medium">Monitoramento de Sono</p>
-                    <p className="text-sm text-gray-500">Melhore sua qualidade de vida</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </main>
+      {/* Footer */}
+      <footer className="bg-white/80 backdrop-blur-sm border-t border-blue-100 py-8">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-green-400 flex items-center justify-center">
+                <Moon className="w-4 h-4 text-white" />
+              </div>
+              <span className="font-bold text-gray-800">Serenidade</span>
+            </div>
+            <p className="text-sm text-gray-600">
+              © 2024 Serenidade. Todos os direitos reservados.
+            </p>
+            <div className="flex items-center gap-4 text-sm text-gray-600">
+              <button className="hover:text-gray-800">Privacidade</button>
+              <button className="hover:text-gray-800">Termos</button>
+              <button className="hover:text-gray-800">Contato</button>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
