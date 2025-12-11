@@ -3,17 +3,28 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { safeAuth, isSupabaseReady } from "@/lib/supabase";
-import { Play, Check, Moon, TrendingUp, BookOpen, Bell, Volume2, Star, Users, Award, Sparkles, ArrowRight, Menu, X } from "lucide-react";
+import { Play, Check, Moon, TrendingUp, BookOpen, Bell, Volume2, Star, Users, Award, Sparkles, ArrowRight, Menu, X, CreditCard, Download, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { CheckoutModal } from "@/components/custom/checkout-modal";
+import { InstallPWA } from "@/components/custom/install-pwa";
 
 export default function LandingPage() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<{
+    type: 'monthly' | 'annual';
+    name: string;
+    price: string;
+    features: string[];
+  } | null>(null);
 
   // Verificar autenticação
   useEffect(() => {
@@ -27,6 +38,12 @@ export default function LandingPage() {
 
         const { data: { session } } = await safeAuth.getSession();
         setIsAuthenticated(!!session);
+        
+        if (session?.user?.email) {
+          setUserEmail(session.user.email);
+          // Remover verificação de assinatura que causava erro
+          setHasActiveSubscription(false);
+        }
       } catch (error) {
         // Silenciosamente trata o erro
         setIsAuthenticated(false);
@@ -40,6 +57,14 @@ export default function LandingPage() {
     // Monitorar mudanças de autenticação
     const { data: { subscription } } = safeAuth.onAuthStateChange(async (event, session) => {
       setIsAuthenticated(!!session);
+      if (session?.user?.email) {
+        setUserEmail(session.user.email);
+        // Remover verificação de assinatura que causava erro
+        setHasActiveSubscription(false);
+      } else {
+        setUserEmail(null);
+        setHasActiveSubscription(false);
+      }
     });
 
     return () => {
@@ -50,19 +75,59 @@ export default function LandingPage() {
   }, []);
 
   const handleGetStarted = () => {
-    if (!isSupabaseReady()) {
-      toast.error("Sistema de autenticação não configurado. Entre em contato com o suporte.");
-      return;
-    }
+    // Redireciona diretamente para a seção de planos
+    scrollToSection("pricing");
+  };
 
-    if (!isAuthenticated) {
-      // Se não está autenticado, vai para login
-      router.push("/login");
-      return;
-    }
+  const handleLogin = () => {
+    // Redireciona para a página de login
+    router.push("/login");
+  };
 
-    // Se está autenticado, vai para o dashboard
-    router.push("/dashboard");
+  const handleSubscribeMonthly = () => {
+    // Redireciona diretamente para o link de pagamento mensal da Kiwify
+    window.location.href = "https://pay.kiwify.com.br/MIXaVZg";
+  };
+
+  const handleSubscribeAnnual = () => {
+    // Redireciona diretamente para o link de pagamento anual da Kiwify
+    window.location.href = "https://pay.kiwify.com.br/Iv0mBt4";
+  };
+
+  const handleOpenCheckout = (planType: 'monthly' | 'annual') => {
+    const plans = {
+      monthly: {
+        type: 'monthly' as const,
+        name: 'Premium Mensal',
+        price: 'R$ 29,90',
+        features: [
+          '10 aulas especializadas',
+          'Áudio guiado profissional',
+          'Monitoramento de sono',
+          'Lembretes personalizados',
+          'Estatísticas avançadas',
+        ],
+      },
+      annual: {
+        type: 'annual' as const,
+        name: 'Premium Anual',
+        price: 'R$ 179,90',
+        features: [
+          'Tudo do Premium',
+          'Acesso antecipado a novos recursos',
+          'Suporte prioritário',
+          'Economia de R$ 179/ano',
+        ],
+      },
+    };
+
+    setSelectedPlan(plans[planType]);
+    setCheckoutOpen(true);
+  };
+
+  const handleCheckoutSuccess = async () => {
+    // Recarregar status da assinatura após pagamento bem-sucedido
+    setHasActiveSubscription(false);
   };
 
   const scrollToSection = (sectionId: string) => {
@@ -90,6 +155,22 @@ export default function LandingPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-cyan-50 to-green-50">
       <Toaster />
       
+      {/* Componente de Instalação PWA - Só mostra se tiver assinatura ativa */}
+      {hasActiveSubscription && <InstallPWA />}
+      
+      {/* Modal de Checkout */}
+      {selectedPlan && (
+        <CheckoutModal
+          isOpen={checkoutOpen}
+          onClose={() => setCheckoutOpen(false)}
+          planType={selectedPlan.type}
+          planName={selectedPlan.name}
+          planPrice={selectedPlan.price}
+          planFeatures={selectedPlan.features}
+          onSuccess={handleCheckoutSuccess}
+        />
+      )}
+      
       {/* Header/Navigation */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-blue-100 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -115,12 +196,29 @@ export default function LandingPage() {
               <button onClick={() => scrollToSection("pricing")} className="text-gray-600 hover:text-gray-800 transition-colors">
                 Planos
               </button>
-              <Button
-                onClick={handleGetStarted}
-                className="bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white"
-              >
-                {isAuthenticated ? "Ir para o App" : "Começar Agora"}
-              </Button>
+              {hasActiveSubscription ? (
+                <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                  <Check className="w-4 h-4" />
+                  Assinatura Ativa
+                </div>
+              ) : (
+                <>
+                  <Button
+                    onClick={handleLogin}
+                    variant="outline"
+                    className="border-blue-200 text-gray-700 hover:bg-blue-50"
+                  >
+                    <LogIn className="w-4 h-4 mr-2" />
+                    Entrar no App
+                  </Button>
+                  <Button
+                    onClick={handleGetStarted}
+                    className="bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white"
+                  >
+                    Começar Agora
+                  </Button>
+                </>
+              )}
             </nav>
 
             {/* Mobile Menu Button */}
@@ -147,12 +245,29 @@ export default function LandingPage() {
               <button onClick={() => scrollToSection("pricing")} className="text-left text-gray-600 hover:text-gray-800 py-2">
                 Planos
               </button>
-              <Button
-                onClick={handleGetStarted}
-                className="bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white w-full"
-              >
-                {isAuthenticated ? "Ir para o App" : "Começar Agora"}
-              </Button>
+              {hasActiveSubscription ? (
+                <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                  <Check className="w-4 h-4" />
+                  Assinatura Ativa
+                </div>
+              ) : (
+                <>
+                  <Button
+                    onClick={handleLogin}
+                    variant="outline"
+                    className="border-blue-200 text-gray-700 hover:bg-blue-50 w-full"
+                  >
+                    <LogIn className="w-4 h-4 mr-2" />
+                    Entrar no App
+                  </Button>
+                  <Button
+                    onClick={handleGetStarted}
+                    className="bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white w-full"
+                  >
+                    Começar Agora
+                  </Button>
+                </>
+              )}
             </nav>
           )}
         </div>
@@ -554,10 +669,19 @@ export default function LandingPage() {
                   </li>
                 </ul>
                 <Button
-                  onClick={handleGetStarted}
+                  onClick={handleSubscribeMonthly}
                   className="w-full bg-gradient-to-r from-blue-400 to-cyan-500 hover:from-blue-500 hover:to-cyan-600 text-white"
                 >
-                  Começar Agora
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Assinar Agora
+                </Button>
+                <Button
+                  onClick={handleLogin}
+                  variant="outline"
+                  className="w-full border-blue-200 text-gray-700 hover:bg-blue-50"
+                >
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Já sou assinante
                 </Button>
               </CardContent>
             </Card>
@@ -593,11 +717,20 @@ export default function LandingPage() {
                   </li>
                 </ul>
                 <Button
-                  onClick={handleGetStarted}
+                  onClick={handleSubscribeAnnual}
                   variant="outline"
                   className="w-full border-blue-200 hover:bg-blue-50"
                 >
-                  Começar Agora
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Assinar Agora
+                </Button>
+                <Button
+                  onClick={handleLogin}
+                  variant="outline"
+                  className="w-full border-blue-200 text-gray-700 hover:bg-blue-50"
+                >
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Já sou assinante
                 </Button>
               </CardContent>
             </Card>

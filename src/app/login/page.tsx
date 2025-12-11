@@ -2,18 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { safeAuth, isSupabaseReady } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
-import { Moon, Mail, Lock, LogIn, UserPlus } from "lucide-react";
+import { Moon, Mail, Lock, LogIn, ArrowLeft } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -23,32 +22,27 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      if (isLogin) {
-        // Login
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
+      if (!isSupabaseReady()) {
+        toast.error("Sistema de autenticação não disponível", {
+          description: "Por favor, configure as credenciais do Supabase",
         });
-
-        if (error) throw error;
-
-        toast.success("Login realizado com sucesso! 🎉");
-        router.push("/");
-      } else {
-        // Cadastro
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-
-        if (error) throw error;
-
-        toast.success("Conta criada com sucesso! Verifique seu email. 📧");
-        setIsLogin(true);
+        setLoading(false);
+        return;
       }
+
+      // Apenas LOGIN - sem cadastro
+      const { data, error } = await safeAuth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      toast.success("Login realizado com sucesso! 🎉");
+      router.push("/dashboard");
     } catch (error: any) {
-      toast.error("Erro na autenticação", {
-        description: error.message || "Tente novamente mais tarde",
+      toast.error("Erro no login", {
+        description: "Verifique suas credenciais ou entre em contato com o suporte",
       });
     } finally {
       setLoading(false);
@@ -59,6 +53,16 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-cyan-50 to-green-50 flex items-center justify-center p-4">
       <Toaster />
       
+      {/* Botão Voltar */}
+      <Button
+        onClick={() => router.push("/")}
+        variant="ghost"
+        className="absolute top-4 left-4 text-gray-600 hover:text-gray-800"
+      >
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Voltar
+      </Button>
+
       <Card className="w-full max-w-md border-blue-100 shadow-xl">
         <CardHeader className="text-center space-y-4">
           <div className="flex justify-center">
@@ -69,7 +73,7 @@ export default function LoginPage() {
           <div>
             <CardTitle className="text-2xl text-gray-800">Serenidade</CardTitle>
             <CardDescription className="text-gray-600">
-              {isLogin ? "Entre na sua conta" : "Crie sua conta"}
+              Acesso exclusivo para assinantes
             </CardDescription>
           </div>
         </CardHeader>
@@ -107,9 +111,6 @@ export default function LoginPage() {
                 minLength={6}
                 className="border-blue-200 focus:ring-blue-400"
               />
-              {!isLogin && (
-                <p className="text-xs text-gray-500">Mínimo de 6 caracteres</p>
-              )}
             </div>
 
             <Button
@@ -119,29 +120,34 @@ export default function LoginPage() {
             >
               {loading ? (
                 "Carregando..."
-              ) : isLogin ? (
+              ) : (
                 <>
                   <LogIn className="w-4 h-4 mr-2" />
                   Entrar
-                </>
-              ) : (
-                <>
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Criar Conta
                 </>
               )}
             </Button>
           </form>
 
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              {isLogin
-                ? "Não tem uma conta? Cadastre-se"
-                : "Já tem uma conta? Faça login"}
-            </button>
+          <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+            <p className="text-sm text-gray-700 text-center font-medium mb-2">
+              🔒 Acesso Restrito
+            </p>
+            <p className="text-xs text-gray-600 text-center">
+              Apenas clientes que compraram o app podem fazer login. Use o email da sua compra na Kiwify.
+            </p>
+          </div>
+
+          <div className="mt-4 text-center">
+            <p className="text-xs text-gray-500">
+              Ainda não comprou?{" "}
+              <button
+                onClick={() => router.push("/")}
+                className="text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Ver planos
+              </button>
+            </p>
           </div>
         </CardContent>
       </Card>

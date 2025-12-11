@@ -51,6 +51,40 @@ export const safeAuth = {
     }
   },
   
+  async signInWithPassword(credentials: { email: string; password: string }) {
+    if (!supabase) {
+      return { 
+        data: { user: null, session: null }, 
+        error: new Error('Supabase não configurado') 
+      };
+    }
+    try {
+      return await supabase.auth.signInWithPassword(credentials);
+    } catch (error: any) {
+      return { 
+        data: { user: null, session: null }, 
+        error: error 
+      };
+    }
+  },
+  
+  async signUp(credentials: { email: string; password: string }) {
+    if (!supabase) {
+      return { 
+        data: { user: null, session: null }, 
+        error: new Error('Supabase não configurado') 
+      };
+    }
+    try {
+      return await supabase.auth.signUp(credentials);
+    } catch (error: any) {
+      return { 
+        data: { user: null, session: null }, 
+        error: error 
+      };
+    }
+  },
+  
   onAuthStateChange(callback: (event: string, session: any) => void) {
     if (!supabase) {
       return { data: { subscription: { unsubscribe: () => {} } } };

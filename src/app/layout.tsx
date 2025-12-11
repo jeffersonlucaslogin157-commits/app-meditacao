@@ -19,6 +19,19 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Serenidade - Meditação e Sono",
   description: "App de meditação para regular o sono e monitorar seu progresso",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Serenidade",
+  },
+  themeColor: "#8B5CF6",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
 };
 
 export default function RootLayout({
@@ -30,6 +43,16 @@ export default function RootLayout({
     <html lang="pt-BR">
       <head>
         <Script src="/lasy-bridge.js" strategy="beforeInteractive" />
+        <Script src="/register-sw.js" strategy="afterInteractive" />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#8B5CF6" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Serenidade" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
